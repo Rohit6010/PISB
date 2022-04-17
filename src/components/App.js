@@ -1,19 +1,76 @@
 import React, { Component } from 'react';
 import NITP from '../NITP.png';
 import './App.css';
+import Web3 from 'web3';
+import file from '../abis/file.json'
 
 //For file upload using ipfs
 const ipfsClient = require('ipfs-http-client')
 const ipfs = ipfsClient({host: "ipfs.infura.io", port:5001,  protocol: 'https'})
 
 class App extends Component {
+
+ async componentWillMount(){
+   await this.loadWeb3()
+   await this.loadBlockchainData()
+ }
+
+ //get account
+ //get network
+ //get smart contract
+ //----> ABI: file.abi
+ //----> Address: networkData.address
+ //get file hash
+ async loadBlockchainData(){
+   const web3 = window.web3
+   const accounts = await web3.eth.getAccounts()
+   this.setState({account: accounts[0]})
+
+   //get network id
+   const networkId = await web3.eth.net.getId()
+   console.log(networkId)
+
+   const networkData = file.networks[networkId]
+   if (networkData){
+     const abi = file.abi
+     const address = networkData.address
+     //Fetch contract
+     const contract = web3.eth.Contract(abi, address)
+     this.setState({contract: contract})
+
+     //call get method of contract
+     const fileHash = await contract.methods.get().call()
+
+     this.setState({fileHash})
+   }
+   else {
+     window.alert('Smart contract not deployed to detected network !')
+   }
+ }
+
  constructor(props) {
    super(props);
    this.state = {
+     account:"",
      buffer: null,
+     contract: null,
      fileHash: 'QmQMjGjgLdDMYTWdr1uyLeXxxY7xzRiG6zvyDQCWPeKwEJ'
    };
  }
+
+//Connection to blockchain
+async loadWeb3(){
+  if(window.ethereum){
+    window.web3 = new Web3(window.ethereum)
+    await window.ethereum.enable()
+  }
+  if(window.web3){
+    window.web3 = new Web3(window.web3.currentProvider)
+  }
+  else{
+    window.alert("Please use metamask !")
+  }
+}
 
 
   //callback function for onChange event handler
@@ -45,17 +102,20 @@ class App extends Component {
 
     //upload file to ipfs
     ipfs.add(this.state.buffer, (error, result) => {
-      console.log('ipfs result', result)
+    console.log('ipfs result', result)
 
       //getting hash of file from ipfs
       const fileHash = result[0].hash
-      this.setState({fileHash: fileHash})
+      console.log(fileHash)
       if(error){
         console.error(error)
         return
       }
 
       //store hash on blockchain
+      this.state.contract.methods.set(fileHash).send({from: this.state.account}).then((r) => {
+        this.setState({fileHash: fileHash})
+      })
     })
 
     
@@ -73,7 +133,15 @@ class App extends Component {
           >
             PISB
           </a>
+          
+          {/* display the account connected with metamask */}
+          <ul className='navbar-nav px-3'>
+            <li className='nav-item text-nowrap d-none d-sm-none d-sm-block'>
+              <small className='text-white'>{this.state.account}</small>
+            </li>
+          </ul>
         </nav>
+
         <div className="container-fluid mt-5">
           <div className="row">
             <main role="main" className="col-lg-12 d-flex text-center">
